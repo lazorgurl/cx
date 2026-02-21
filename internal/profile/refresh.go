@@ -145,9 +145,7 @@ func RefreshProfile(name string) error {
 	// Also update live credentials if this profile is currently active.
 	state, err := ReadState()
 	if err == nil && state.ActiveProfile == name {
-		if credPath, err := config.CredentialsPath(); err == nil {
-			_ = WriteCredentials(credPath, refreshed)
-		}
+		_ = WriteLiveCredentials(refreshed)
 	}
 	return nil
 }

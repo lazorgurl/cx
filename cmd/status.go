@@ -22,11 +22,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	credPath, err := config.CredentialsPath()
-	if err != nil {
-		return err
-	}
-	raw, err := profile.ReadCredentials(credPath)
+	raw, err := profile.ReadLiveCredentials()
 	if err != nil {
 		return fmt.Errorf("no credentials found: %w", err)
 	}

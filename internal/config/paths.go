@@ -20,6 +20,8 @@ func ClaudeConfigDir() (string, error) {
 }
 
 // CredentialsPath returns the path to the live Claude credentials file.
+// On macOS, Claude Code stores live credentials in the system Keychain instead
+// of this file. This path is used as a fallback on non-macOS platforms.
 func CredentialsPath() (string, error) {
 	dir, err := ClaudeConfigDir()
 	if err != nil {

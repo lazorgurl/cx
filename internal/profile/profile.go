@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"time"
@@ -44,11 +43,7 @@ func SaveProfile(name string) error {
 	if err := ValidateName(name); err != nil {
 		return err
 	}
-	credPath, err := config.CredentialsPath()
-	if err != nil {
-		return err
-	}
-	data, err := ReadCredentials(credPath)
+	data, err := ReadLiveCredentials()
 	if err != nil {
 		return fmt.Errorf("reading live credentials: %w", err)
 	}
@@ -78,11 +73,6 @@ func UseProfile(name string) error {
 		return err
 	}
 
-	credPath, err := config.CredentialsPath()
-	if err != nil {
-		return err
-	}
-
 	// Flush current live credentials back to the active profile (best-effort)
 	// so we never lose a silently-refreshed token when switching.
 	state, err := ReadState()
@@ -90,7 +80,7 @@ func UseProfile(name string) error {
 		return err
 	}
 	if state.ActiveProfile != "" && state.ActiveProfile != name {
-		if liveData, err := ReadCredentials(credPath); err == nil {
+		if liveData, err := ReadLiveCredentials(); err == nil {
 			if prevDir, err := config.ProfileDir(state.ActiveProfile); err == nil {
 				if config.EnsureDir(prevDir) == nil {
 					if prevCredPath, err := config.ProfileCredPath(state.ActiveProfile); err == nil {
@@ -109,10 +99,7 @@ func UseProfile(name string) error {
 	if err != nil {
 		return fmt.Errorf("reading profile credentials for %q: %w", name, err)
 	}
-	if err := config.EnsureDir(filepath.Dir(credPath)); err != nil {
-		return fmt.Errorf("ensuring credentials directory: %w", err)
-	}
-	if err := WriteCredentials(credPath, data); err != nil {
+	if err := WriteLiveCredentials(data); err != nil {
 		return fmt.Errorf("writing live credentials: %w", err)
 	}
 	return WriteState(State{ActiveProfile: name})
@@ -182,16 +169,10 @@ func RemoveProfile(name string) error {
 // credentials. Fast path: checks the state hint first. Slow path: iterates
 // all profiles comparing hashes. Returns "" with no error if no match.
 func DetectActiveProfile() (string, error) {
-	credPath, err := config.CredentialsPath()
+	liveData, err := ReadLiveCredentials()
 	if err != nil {
-		return "", err
-	}
-	liveData, err := ReadCredentials(credPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", nil
-		}
-		return "", fmt.Errorf("reading live credentials: %w", err)
+		// No live credentials available (file missing, keychain empty, etc.).
+		return "", nil
 	}
 	liveHash, err := HashCredentials(liveData)
 	if err != nil {
