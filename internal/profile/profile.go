@@ -70,11 +70,37 @@ func SaveProfile(name string) error {
 }
 
 // UseProfile switches the live credentials to those from the named profile
-// and updates the active profile state.
+// and updates the active profile state. Before switching, it flushes the
+// current live credentials back to the previously active profile so any
+// token refreshes that occurred during use are preserved.
 func UseProfile(name string) error {
 	if err := ValidateName(name); err != nil {
 		return err
 	}
+
+	credPath, err := config.CredentialsPath()
+	if err != nil {
+		return err
+	}
+
+	// Flush current live credentials back to the active profile (best-effort)
+	// so we never lose a silently-refreshed token when switching.
+	state, err := ReadState()
+	if err != nil {
+		return err
+	}
+	if state.ActiveProfile != "" && state.ActiveProfile != name {
+		if liveData, err := ReadCredentials(credPath); err == nil {
+			if prevDir, err := config.ProfileDir(state.ActiveProfile); err == nil {
+				if config.EnsureDir(prevDir) == nil {
+					if prevCredPath, err := config.ProfileCredPath(state.ActiveProfile); err == nil {
+						_ = WriteCredentials(prevCredPath, liveData)
+					}
+				}
+			}
+		}
+	}
+
 	profCredPath, err := config.ProfileCredPath(name)
 	if err != nil {
 		return err
@@ -83,10 +109,6 @@ func UseProfile(name string) error {
 	if err != nil {
 		return fmt.Errorf("reading profile credentials for %q: %w", name, err)
 	}
-	credPath, err := config.CredentialsPath()
-	if err != nil {
-		return err
-	}
 	if err := config.EnsureDir(filepath.Dir(credPath)); err != nil {
 		return fmt.Errorf("ensuring credentials directory: %w", err)
 	}
@@ -94,6 +116,19 @@ func UseProfile(name string) error {
 		return fmt.Errorf("writing live credentials: %w", err)
 	}
 	return WriteState(State{ActiveProfile: name})
+}
+
+// CredentialsExpired reports whether the parsed credentials have a known,
+// non-zero expiry that is in the past.
+func CredentialsExpired(raw []byte) (bool, error) {
+	info, err := ParseCredentialInfo(raw)
+	if err != nil {
+		return false, err
+	}
+	if info.ExpiresAt.IsZero() {
+		return false, nil
+	}
+	return time.Now().After(info.ExpiresAt), nil
 }
 
 // ListProfiles returns a sorted list of profile names. If the profiles
